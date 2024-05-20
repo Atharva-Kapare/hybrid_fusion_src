@@ -23,7 +23,7 @@ class YoloZedNode(Node):
         
         # Initialize ZED camera
         init = sl.InitParameters()
-        init.coordinate_system = sl.COORDINATE_SYSTEM.RIGHT_HANDED_Y_UP
+        init.coordinate_system = sl.COORDINATE_SYSTEM.RIGHT_HANDED_Z_UP_X_FWD
         init.camera_resolution = sl.RESOLUTION.HD720
         init.depth_mode = sl.DEPTH_MODE.PERFORMANCE
         init.coordinate_units = sl.UNIT.CENTIMETER
