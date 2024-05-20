@@ -41,7 +41,7 @@ class PointCloudSubscriber(Node):
         ])
 
         # Translation of LIDAR relative to the camera
-        self.translation = np.array([0, -0.25, 0.0])
+        self.translation = np.array([-0.25, -0.05, 0.0])
         # Rotation matrix of LIDAR relative to camera
         self.roll = -90
         self.pitch = 90
