@@ -127,16 +127,25 @@ class PointCloudSubscriber(Node):
                 # Calculate the projected points with the intrinsic matrix
                 points_projected = (self.camera_intrinsic @ self.transformedPoints.T)
 
+                points_projected = points_projected.T
+
                 # Normalize the points to convert from homogeneous coordinates to 2D
-                points_projected = points_projected / points_projected[2]
+
+                # print("Before", points_projected.shape)
+                # points_projected = points_projected[:2] / points_projected[2]
+                points_projected[:, :2] = points_projected[:, :2] / points_projected[:, 2][:, np.newaxis]
+
+                # print("After", points_projected.shape)
+                
 
                 # Convert from homogeneous coordinates to 2D
-                points_projected = points_projected[:2, :]
+                # points_projected = points_projected[:2, :]
 
-                image_width = 1280 # Get this variable from the ZED sdk later
-                image_height = 720 # Get this variable from the ZED sdk later
-                points_projected = np.clip(points_projected.T, [0, 0], [image_width, image_height])
+                # image_width = 1280 # Get this variable from the ZED sdk later
+                # image_height = 720 # Get this variable from the ZED sdk later
+                # points_projected = np.clip(points_projected, [0, 0, 0], [image_width, image_height, 0])
 
+                # print("Proj: ", points_projected.shape)
                 # mask = (points_projected[:, 0] >= x1) & (points_projected[:, 0] <= x2) & \
                 #     (points_projected[:, 1] >= y1) & (points_projected[:, 1] <= y2)
 
@@ -144,6 +153,11 @@ class PointCloudSubscriber(Node):
                 filtered_points = points_projected[(points_projected[:, 0] >= x1) & (points_projected[:, 0] <= x2) & 
                                                    (points_projected[:, 1] >= y1) & (points_projected[:, 1] <= y2)]
 
+                # print("Filtered shape: ", filtered_points.shape)
+                # print("Filtered point: ", filtered_points[0])
+
+                averageZ = np.mean(filtered_points[:, 2])
+                print("Average Z: ", averageZ)
 
                 # Visualize on the camera image
                 for point in filtered_points:
@@ -151,7 +165,7 @@ class PointCloudSubscriber(Node):
                     if 0 <= x < self.currentImage.shape[1] and 0 <= y < self.currentImage.shape[0]:
                         cv2.circle(self.currentImage, (x, y), 3, (0, 255, 0), -1)
             
-            self.imagePublisher.publish(self.bridge.cv2_to_imgmsg(self.currentImage, encoding="bgr8"))
+                self.imagePublisher.publish(self.bridge.cv2_to_imgmsg(self.currentImage, encoding="bgr8"))
         return
 
     def imageCallback(self, msg: Image):
@@ -169,8 +183,6 @@ class PointCloudSubscriber(Node):
             if points.size == 0:
                 self.get_logger().warn("Received empty point cloud")
                 return
-            
-
 
             # file_path = os.path.abspath('test.npy')
             # # Save the array to a binary file
