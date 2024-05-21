@@ -8,6 +8,8 @@ from rclpy.node import Node
 import sensor_msgs.msg as sensor_msgs
 from sensor_msgs.msg import Image
 
+from my_robot_interfaces.msg import Cone, Cones
+
 from sensor_msgs_py import point_cloud2
 import numpy as np
 import tf2_py
@@ -25,6 +27,9 @@ class PointCloudSubscriber(Node):
 
         # Create subscription to the /raw_image
         self.imageSubscriber = self.create_subscription(Image, "raw_image", self.imageCallback, 10)
+
+        # Create subscription to get all detected cones
+        self.conesSubscriber = self.create_subscription(Cones, "/detected_objects", self.detectedCones, 10)
 
         # Create an image publisher
         self.imagePublisher = self.create_publisher(Image, "/fusedImage", 10)
@@ -54,6 +59,7 @@ class PointCloudSubscriber(Node):
         self.bridge = CvBridge()
 
         self.transformedPoints = None
+        self.currentImage = None
 
     def createTransformationMatrix(self):
         rotation_matrix = self.rotation_matrix
@@ -95,50 +101,63 @@ class PointCloudSubscriber(Node):
         # This will apply the Rotation and Translation
         transformed_point_cloud = (self.transformationMatrix @ homoPoints.T)
 
-
         # Convert back from homogeneous coordinates
         transformed_point_cloud = transformed_point_cloud[:3, :].T
 
         # Return the, now transformed, point cloud
         return transformed_point_cloud
 
+    def detectedCones(self, msg: Cones):
+
+        for cone in msg.cones:
+
+            # Extract the cone bounding box
+            x1 = cone.x1
+            y1 = cone.y1
+            x2 = cone.x2
+            y2 = cone.y2
+
+            # x1 = 600
+            # y1 = 300
+            # x2 = 700
+            # y2 = 400
+
+            if self.transformedPoints is not None and self.currentImage is not None:
+                
+                # Calculate the projected points with the intrinsic matrix
+                points_projected = (self.camera_intrinsic @ self.transformedPoints.T)
+
+                # Normalize the points to convert from homogeneous coordinates to 2D
+                points_projected = points_projected / points_projected[2]
+
+                # Convert from homogeneous coordinates to 2D
+                points_projected = points_projected[:2, :]
+
+                image_width = 1280 # Get this variable from the ZED sdk later
+                image_height = 720 # Get this variable from the ZED sdk later
+                points_projected = np.clip(points_projected.T, [0, 0], [image_width, image_height])
+
+                # mask = (points_projected[:, 0] >= x1) & (points_projected[:, 0] <= x2) & \
+                #     (points_projected[:, 1] >= y1) & (points_projected[:, 1] <= y2)
+
+                # Filter the points based on the bounding box values
+                filtered_points = points_projected[(points_projected[:, 0] >= x1) & (points_projected[:, 0] <= x2) & 
+                                                   (points_projected[:, 1] >= y1) & (points_projected[:, 1] <= y2)]
+
+
+                # Visualize on the camera image
+                for point in filtered_points:
+                    x, y = int(point[0]), int(point[1])
+                    if 0 <= x < self.currentImage.shape[1] and 0 <= y < self.currentImage.shape[0]:
+                        cv2.circle(self.currentImage, (x, y), 3, (0, 255, 0), -1)
+            
+            self.imagePublisher.publish(self.bridge.cv2_to_imgmsg(self.currentImage, encoding="bgr8"))
+        return
+
     def imageCallback(self, msg: Image):
         # This message will apply the current transformed matrix to the latest image and publish it
         image = self.bridge.imgmsg_to_cv2(msg)
-
-        # image = np.zeros((1920,1080,3), np.uint8)
-
-        if self.transformedPoints is not None:
-            # Calculate the projected points with the intrinsic matrix
-            points_projected = (self.camera_intrinsic @ self.transformedPoints.T)
-
-            # Normalize the points to convert from homogeneous coordinates to 2D
-            points_projected = points_projected / points_projected[2]
-
-            # Convert from homogeneous coordinates to 2D
-            points_projected = points_projected[:2, :]
-
-            image_width = 1280
-            image_height = 720
-            points_projected = np.clip(points_projected.T, [0, 0], [image_width, image_height])
-
-            # print("Projected Points: ", points_projected[0])
-            # points_projected = points_projected[:, :2] / points_projected[:, 2, np.newaxis]
-
-            # print(points_projected[0])
-
-            # Visualize on the camera image
-            for point in points_projected:
-                x, y = int(point[0]), int(point[1])
-                # print("X:", x, "Y:", y)
-                # print("Image Shape:", image.shape[1], image.shape[0])
-                if 0 <= x < image.shape[1] and 0 <= y < image.shape[0]:
-                    cv2.circle(image, (x, y), 3, (0, 255, 0), -1)
-            
-            cv2.circle(image, (1280,720), 10, (0,0,255), -1)
-
-            self.imagePublisher.publish(self.bridge.cv2_to_imgmsg(image, encoding="bgr8"))
-
+        self.currentImage = image
         return 
 
     def pointsCallback(self, msg: sensor_msgs.PointCloud2):
